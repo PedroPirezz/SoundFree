@@ -45,13 +45,15 @@ wss.on("connection", ws => {
 
       // Broadcast
       wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: "SYNC",
-            state: mixerState
-          }));
-        }
-      });
+  if (client.readyState === WebSocket.OPEN) {
+    client.send(JSON.stringify({
+      type: "SYNC",
+      channel: ch,
+      payload: mixerState[ch]
+    }));
+  }
+});
+
     }
   });
 });

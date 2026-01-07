@@ -1,69 +1,87 @@
-
 const ws = new WebSocket("wss://soundfree-1.onrender.com/");
 
-
 const CHANNELS = 16;
+
+const CHANNEL_NAMES = [
+  "PASTOR-1", "PASTOR-2", "MIC-3", "MIC-4",
+  "MIC-5", "MIC-6", "TECLADO", "VIOLÃO",
+  "GUITARRA", "BAIXO", "BUMBO", "BATERIA",
+  "CH-13", "CH-14", "CH-15", "CH-16"
+];
+
 let mixerState = [];
-const CHANNEL_NAMES = [ "PASTOR-1", "PASTOR-2", "MIC-3", "MIC-4", "MIC-5", "MIC-6", "TECLADO", "VIOLÃO", "GUITARRA", "BAIXO", "BUMBO", "BATERIA", "CH-13", "CH-14", "CH-15", "CH-16" ];
 let isDragging = Array(CHANNELS).fill(false);
 
 document.addEventListener("DOMContentLoaded", () => {
   const mixer = document.getElementById("mixer");
-  mixer.classList.add("mixer");
+
+  // ======================
+  // WebSocket
+  // ======================
+  ws.onopen = () => {
+    console.log("🟢 WebSocket conectado");
+  };
 
   ws.onmessage = e => {
     const data = JSON.parse(e.data);
 
     if (data.type === "INIT") {
       mixerState = data.state;
-      renderMixer(); // ✅ APENAS UMA VEZ
+      renderMixer();
     }
 
     if (data.type === "SYNC") {
-      mixerState = data.state;
-      mixerState.forEach(updateChannelUI); // ✅ atualiza, não recria
+      const { channel, payload } = data;
+
+      // 🔥 atualiza somente o canal correto
+      mixerState[channel] = payload;
+      updateChannelUI(payload);
     }
   };
 
-function renderMixer() {
-  mixer.innerHTML = "";
+  // ======================
+  // Render Mixer (UMA VEZ)
+  // ======================
+  function renderMixer() {
+    mixer.innerHTML = "";
 
-  mixerState.forEach(ch => {
-    const el = document.createElement("div");
-    el.className = "channel";
-    el.dataset.id = ch.id;
+    mixerState.forEach(ch => {
+      const el = document.createElement("div");
+      el.className = "channel";
 
-    el.innerHTML = `
-      <div class="channel-name">
-        ${CHANNEL_NAMES[ch.id] || `Canal ${ch.id + 1}`}
-      </div>
+      el.innerHTML = `
+        <div class="channel-name">
+          ${CHANNEL_NAMES[ch.id] || `Canal ${ch.id + 1}`}
+        </div>
 
-      <div class="volume" id="vol-${ch.id}">
-        ${ch.volume}%
-      </div>
+        <div class="volume" id="vol-${ch.id}">
+          ${ch.volume}%
+        </div>
 
-      <input
-        class="fader"
-        id="fader-${ch.id}"
-        type="range"
-        min="0"
-        max="100"
-        value="${ch.volume}"
-      >
+        <input
+          class="fader"
+          id="fader-${ch.id}"
+          type="range"
+          min="0"
+          max="100"
+          value="${ch.volume}"
+        >
 
-      <div class="buttons">
-        <button class="mute" id="mute-${ch.id}">M</button>
-        <button class="solo" id="solo-${ch.id}">S</button>
-      </div>
-    `;
+        <div class="buttons">
+          <button class="mute" id="mute-${ch.id}">M</button>
+          <button class="solo" id="solo-${ch.id}">S</button>
+        </div>
+      `;
 
-    mixer.appendChild(el);
-    bindEvents(ch.id);
-    updateChannelUI(ch);
-  });
-}
+      mixer.appendChild(el);
+      bindEvents(ch.id);
+      updateChannelUI(ch);
+    });
+  }
 
-
+  // ======================
+  // Eventos
+  // ======================
   function bindEvents(id) {
     const fader = document.getElementById(`fader-${id}`);
     const mute = document.getElementById(`mute-${id}`);
@@ -71,22 +89,33 @@ function renderMixer() {
 
     fader.addEventListener("pointerdown", () => isDragging[id] = true);
     fader.addEventListener("pointerup", () => isDragging[id] = false);
+    fader.addEventListener("pointercancel", () => isDragging[id] = false);
+    fader.addEventListener("pointerleave", () => isDragging[id] = false);
 
-  fader.addEventListener("input", e => {
-  const val = Math.round(e.target.value);
-  document.getElementById(`vol-${id}`).innerText = val + "%";
-  sendUpdate(id, { volume: val });
-});
+    fader.addEventListener("input", e => {
+      const val = Math.round(e.target.value);
+
+      // 🔥 atualiza local para evitar “briga”
+      mixerState[id].volume = val;
+      document.getElementById(`vol-${id}`).innerText = val + "%";
+
+      sendUpdate(id, { ...mixerState[id] });
+    });
 
     mute.onclick = () => {
-      sendUpdate(id, { mute: !mixerState[id].mute });
+      mixerState[id].mute = !mixerState[id].mute;
+      sendUpdate(id, { ...mixerState[id] });
     };
 
     solo.onclick = () => {
-      sendUpdate(id, { solo: !mixerState[id].solo });
+      mixerState[id].solo = !mixerState[id].solo;
+      sendUpdate(id, { ...mixerState[id] });
     };
   }
 
+  // ======================
+  // Enviar update
+  // ======================
   function sendUpdate(channel, payload) {
     ws.send(JSON.stringify({
       type: "UPDATE",
@@ -95,6 +124,9 @@ function renderMixer() {
     }));
   }
 
+  // ======================
+  // Atualizar UI
+  // ======================
   function updateChannelUI(ch) {
     const fader = document.getElementById(`fader-${ch.id}`);
     const vol = document.getElementById(`vol-${ch.id}`);
@@ -107,19 +139,16 @@ function renderMixer() {
     solo.classList.toggle("active", ch.solo);
 
     const target = getTargetVolume(ch);
-
     fader.disabled = isLocked(ch);
 
-    // 🔥 NÃO ANIMA SE O USUÁRIO ESTIVER MEXENDO
-    if (!isDragging[ch.id] && Number(fader.value) !== target) {
+    if (!isDragging[ch.id]) {
       animateFader(fader, vol, target);
-    }
-
-    if (isDragging[ch.id]) {
-      vol.innerText = fader.value + "%";
     }
   }
 
+  // ======================
+  // Lógica Solo / Mute
+  // ======================
   function isSoloActive() {
     return mixerState.some(c => c.solo);
   }
@@ -136,12 +165,15 @@ function renderMixer() {
     return ch.volume;
   }
 
+  // ======================
+  // Animação Suave
+  // ======================
   function animateFader(fader, label, target) {
     let current = Number(fader.value);
-    const speed = 1.2; // 👈 ultra suave
+    const speed = 0.9;
 
     function step() {
-      if (Math.abs(current - target) < 0.5) {
+      if (Math.abs(current - target) < 0.3) {
         current = target;
       } else {
         current += current < target ? speed : -speed;
