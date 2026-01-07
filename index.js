@@ -9,7 +9,9 @@ const wss = new WebSocket.Server({ server });
 
 const CHANNELS = 16;
 
-// 🔥 Estado global
+// ======================
+// Estado global
+// ======================
 let mixerState = Array.from({ length: CHANNELS }, (_, i) => ({
   id: i,
   volume: 50,
@@ -23,37 +25,50 @@ app.use(express.static(path.join(__dirname, "public")));
 
 app.get("/", (req, res) => res.render("Home"));
 
+// ======================
+// WebSocket
+// ======================
 wss.on("connection", ws => {
   console.log("🟢 Cliente conectado");
 
-  // Envia estado completo
+  // Envia estado inicial
   ws.send(JSON.stringify({
     type: "INIT",
     state: mixerState
   }));
 
   ws.on("message", msg => {
-    const data = JSON.parse(msg);
+    let data;
+    try {
+      data = JSON.parse(msg);
+    } catch {
+      return;
+    }
 
     if (data.type === "UPDATE") {
       const ch = data.channel;
 
+      if (typeof ch !== "number") return;
+
+      // Atualiza estado global
       mixerState[ch] = {
         ...mixerState[ch],
-        ...data.payload
+        ...data.payload,
+        id: ch // garante ID
       };
 
-      // Broadcast
-      wss.clients.forEach(client => {
-  if (client.readyState === WebSocket.OPEN) {
-    client.send(JSON.stringify({
-      type: "SYNC",
-      channel: ch,
-      payload: mixerState[ch]
-    }));
-  }
-});
-
+      // 🔥 Broadcast de TODOS os canais
+      mixerState.forEach(channel => {
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: "SYNC",
+              channel: channel.id,
+              payload: channel
+            }));
+          }
+        });
+      });
     }
   });
 });
