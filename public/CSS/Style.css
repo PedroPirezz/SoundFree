@@ -1,0 +1,111 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #0e0e11;
+  color: #e0e0e0;
+  font-family: Arial, Helvetica, sans-serif;
+  overflow-x: hidden;
+}
+
+header {
+  background: #15151a;
+  padding: 12px;
+  text-align: center;
+  font-weight: bold;
+  letter-spacing: 2px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.mixer {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 14px;
+  padding: 16px;
+}
+
+.channel {
+  background: #1a1a1f;
+  border-radius: 8px;
+  padding: 10px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 160px;
+  margin: 0 auto;
+}
+
+.channel-name {
+  font-size: 11px;
+  font-weight: bold;
+  color: #f1c40f;
+  margin-bottom: 4px;
+  text-align: center;
+}
+
+.volume {
+  font-size: 15px;
+  font-weight: bold;
+  color: #1abc9c;
+  margin-bottom: 6px;
+
+  /* ESSENCIAL PARA NÃO SOBREPOR */
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  font-family: "Courier New", monospace;
+  user-select: none;
+}
+
+
+.fader {
+  writing-mode: bt-lr;
+  -webkit-appearance: slider-vertical;
+  width: 16px;
+  height: 180px;
+}
+
+.fader:disabled {
+  opacity: 0.4;
+}
+
+@media (pointer: coarse) {
+  .fader {
+    width: 24px;
+  }
+
+  .fader::-webkit-slider-thumb {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+.buttons {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+button {
+  width: 42px;
+  padding: 6px 0;
+  font-size: 11px;
+  font-weight: bold;
+  border: none;
+  border-radius: 4px;
+  background: #2a2a2a;
+  color: #aaa;
+  cursor: pointer;
+}
+
+button.active.mute {
+  background: #c0392b;
+  color: #fff;
+}
+
+button.active.solo {
+  background: #f1c40f;
+  color: #000;
+}
