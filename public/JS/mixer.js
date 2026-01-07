@@ -1,5 +1,5 @@
-const protocol = location.protocol === "https:" ? "wss" : "ws";
-const ws = new WebSocket("https://soundfree-1.onrender.com/");
+
+const ws = new WebSocket("wss://soundfree-1.onrender.com/");
 
 
 const CHANNELS = 16;
