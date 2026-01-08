@@ -2,6 +2,7 @@ const express = require("express");
 const http = require("http");
 const path = require("path");
 const WebSocket = require("ws");
+require("dotenv").config();
 
 const app = express();
 const server = http.createServer(app);
@@ -14,7 +15,6 @@ const CHANNELS = 16;
 // ==============================
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
-
 async function redisGet(key) {
   const res = await fetch(`${REDIS_URL}/get/${key}`, {
     headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
