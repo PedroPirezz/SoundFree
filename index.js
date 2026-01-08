@@ -4,6 +4,8 @@ const path = require("path");
 const WebSocket = require("ws");
 require("dotenv").config();
 
+
+
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -15,12 +17,15 @@ const CHANNELS = 16;
 // ==============================
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
 async function redisGet(key) {
   const res = await fetch(`${REDIS_URL}/get/${key}`, {
-    headers: { Authorization: `Bearer ${REDIS_TOKEN}` }
+    headers: {
+      Authorization: `Bearer ${REDIS_TOKEN}`
+    }
   });
   const data = await res.json();
-  return data.result;
+  return data.result; // string ou null
 }
 
 async function redisSet(key, value) {
@@ -28,9 +33,9 @@ async function redisSet(key, value) {
     method: "POST",
     headers: {
       Authorization: `Bearer ${REDIS_TOKEN}`,
-      "Content-Type": "application/json"
+      "Content-Type": "text/plain"
     },
-    body: JSON.stringify(value)
+    body: value // 👈 STRING PURA
   });
 }
 
@@ -50,9 +55,16 @@ let mixerState = Array.from({ length: CHANNELS }, (_, i) => ({
 async function loadMixerState() {
   try {
     const saved = await redisGet("mixerState");
+
     if (saved) {
-      mixerState = JSON.parse(saved);
-      console.log("♻️ Mixer restaurado do Redis");
+      const parsed = JSON.parse(saved);
+
+      if (Array.isArray(parsed)) {
+        mixerState = parsed;
+        console.log("♻️ Mixer restaurado do Redis");
+      } else {
+        console.warn("⚠️ Redis tinha dado inválido, resetando");
+      }
     }
   } catch (err) {
     console.error("Erro ao carregar Redis:", err);
@@ -85,6 +97,7 @@ app.get("/", (req, res) => res.render("Home"));
 wss.on("connection", ws => {
   console.log("🟢 Cliente conectado");
 
+  // ENVIA ARRAY GARANTIDO
   ws.send(JSON.stringify({
     type: "INIT",
     state: mixerState
@@ -96,21 +109,21 @@ wss.on("connection", ws => {
     try {
       data = JSON.parse(msg);
     } catch {
-      console.warn("⚠️ Mensagem inválida ignorada:", msg.toString());
       return;
     }
 
     if (data.type === "UPDATE") {
       const ch = data.channel;
 
+      if (!mixerState[ch]) return;
+
       mixerState[ch] = {
         ...mixerState[ch],
         ...data.payload
       };
 
-      await saveMixerState(); // 🔥 SALVA SEMPRE
+      await saveMixerState();
 
-      // Broadcast
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
           client.send(JSON.stringify({
@@ -127,7 +140,7 @@ wss.on("connection", ws => {
 // ==============================
 // Start server
 // ==============================
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 80;
 
 server.listen(PORT, async () => {
   await loadMixerState();
