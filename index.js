@@ -4,8 +4,6 @@ const path = require("path");
 const WebSocket = require("ws");
 require("dotenv").config();
 
-
-
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
@@ -25,7 +23,7 @@ async function redisGet(key) {
     }
   });
   const data = await res.json();
-  return data.result; // string ou null
+  return data.result;
 }
 
 async function redisSet(key, value) {
@@ -35,7 +33,7 @@ async function redisSet(key, value) {
       Authorization: `Bearer ${REDIS_TOKEN}`,
       "Content-Type": "text/plain"
     },
-    body: value // 👈 STRING PURA
+    body: value
   });
 }
 
@@ -97,7 +95,6 @@ app.get("/", (req, res) => res.render("Home"));
 wss.on("connection", ws => {
   console.log("🟢 Cliente conectado");
 
-  // ENVIA ARRAY GARANTIDO
   ws.send(JSON.stringify({
     type: "INIT",
     state: mixerState
@@ -112,17 +109,15 @@ wss.on("connection", ws => {
       return;
     }
 
+    const ch = data.channel;
+    if (!mixerState[ch]) return;
+
+    // Atualiza em memória e sincroniza
     if (data.type === "UPDATE") {
-      const ch = data.channel;
-
-      if (!mixerState[ch]) return;
-
       mixerState[ch] = {
         ...mixerState[ch],
         ...data.payload
       };
-
-      await saveMixerState();
 
       wss.clients.forEach(client => {
         if (client.readyState === WebSocket.OPEN) {
@@ -133,6 +128,12 @@ wss.on("connection", ws => {
           }));
         }
       });
+    }
+
+    // Salva no Redis somente quando o usuário soltar o fader
+    if (data.type === "COMMIT") {
+      await saveMixerState();
+      console.log("💾 Mixer salvo no Redis");
     }
   });
 });
