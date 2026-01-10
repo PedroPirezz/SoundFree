@@ -10,9 +10,7 @@ const wss = new WebSocket.Server({ server });
 
 const CHANNELS = 16;
 
-// ==============================
-// Upstash config
-// ==============================
+
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -37,9 +35,7 @@ async function redisSet(key, value) {
   });
 }
 
-// ==============================
-// Estado global
-// ==============================
+
 let mixerState = Array.from({ length: CHANNELS }, (_, i) => ({
   id: i,
   volume: 50,
@@ -47,9 +43,7 @@ let mixerState = Array.from({ length: CHANNELS }, (_, i) => ({
   solo: false
 }));
 
-// ==============================
-// Carregar estado salvo
-// ==============================
+
 async function loadMixerState() {
   try {
     const saved = await redisGet("mixerState");
@@ -69,9 +63,7 @@ async function loadMixerState() {
   }
 }
 
-// ==============================
-// Salvar estado
-// ==============================
+
 async function saveMixerState() {
   try {
     await redisSet("mixerState", JSON.stringify(mixerState));
@@ -80,18 +72,14 @@ async function saveMixerState() {
   }
 }
 
-// ==============================
-// Express
-// ==============================
+
 app.set("views", path.join(__dirname, "views"));
 app.set("view engine", "ejs");
 app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/", (req, res) => res.render("Home"));
 
-// ==============================
-// WebSocket
-// ==============================
+
+
 wss.on("connection", ws => {
   console.log("🟢 Cliente conectado");
 
@@ -112,7 +100,7 @@ wss.on("connection", ws => {
     const ch = data.channel;
     if (!mixerState[ch]) return;
 
-    // Atualiza em memória e sincroniza
+  
     if (data.type === "UPDATE") {
       mixerState[ch] = {
         ...mixerState[ch],
@@ -130,7 +118,7 @@ wss.on("connection", ws => {
       });
     }
 
-    // Salva no Redis somente quando o usuário soltar o fader
+    
     if (data.type === "COMMIT") {
       await saveMixerState();
       console.log("💾 Mixer salvo no Redis");
@@ -138,9 +126,7 @@ wss.on("connection", ws => {
   });
 });
 
-// ==============================
-// Start server
-// ==============================
+
 const PORT = process.env.PORT || 80;
 
 server.listen(PORT, async () => {
