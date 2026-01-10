@@ -19,6 +19,12 @@ header {
   border-bottom: 1px solid #2a2a2a;
 }
 
+.icon-logo {
+  width: 88px;
+  height: 88px;
+  margin-bottom: 8px;
+}
+
 .mixer {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));

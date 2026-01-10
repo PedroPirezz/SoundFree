@@ -17,6 +17,8 @@ let isDragging = Array(CHANNELS).fill(false);
 document.addEventListener("DOMContentLoaded", () => {
   const mixer = document.getElementById("mixer");
 
+  createLoading();
+
   // ======================
   // WebSocket
   // ======================
@@ -39,6 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (data.type === "INIT") {
       mixerState = data.state;
+      removeLoading();
       renderMixer();
       return;
     }
@@ -46,20 +49,80 @@ document.addEventListener("DOMContentLoaded", () => {
     if (data.type === "SYNC") {
       const { channel, payload } = data;
 
-      // 🔥 MERGE correto do estado
       mixerState[channel] = {
         ...mixerState[channel],
         ...payload,
         id: channel
       };
 
-      // 🔥 reaplica lógica global (SOLO/MUTE)
       mixerState.forEach(updateChannelUI);
     }
   };
 
   // ======================
-  // Render Mixer (1x)
+  // LOADING
+  // ======================
+  function createLoading() {
+    const loading = document.createElement("div");
+    loading.id = "loading-screen";
+
+    loading.innerHTML = `
+      <div class="loader-box">
+        <div class="spinner"></div>
+        <div class="loading-text">Conectando ao servidor...</div>
+      </div>
+    `;
+
+    document.body.appendChild(loading);
+
+    const style = document.createElement("style");
+    style.innerHTML = `
+      #loading-screen {
+        position: fixed;
+        inset: 0;
+        background: #0b0b0b;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        font-family: Arial, sans-serif;
+      }
+
+      .loader-box {
+        text-align: center;
+        color: white;
+      }
+
+      .spinner {
+        width: 60px;
+        height: 60px;
+        border: 6px solid #333;
+        border-top: 6px solid #ff4d4d;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+      }
+
+      .loading-text {
+        font-size: 16px;
+        opacity: 0.85;
+        letter-spacing: 1px;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  function removeLoading() {
+    const el = document.getElementById("loading-screen");
+    if (el) el.remove();
+  }
+
+  // ======================
+  // Render Mixer
   // ======================
   function renderMixer() {
     mixer.innerHTML = "";
@@ -108,9 +171,23 @@ document.addEventListener("DOMContentLoaded", () => {
     const solo = document.getElementById(`solo-${id}`);
 
     fader.addEventListener("pointerdown", () => isDragging[id] = true);
-    fader.addEventListener("pointerup", () => isDragging[id] = false);
-    fader.addEventListener("pointerleave", () => isDragging[id] = false);
-    fader.addEventListener("pointercancel", () => isDragging[id] = false);
+
+    fader.addEventListener("pointerup", () => {
+      isDragging[id] = false;
+      sendCommit(id);
+    });
+
+    fader.addEventListener("pointerleave", () => {
+      if (isDragging[id]) {
+        isDragging[id] = false;
+        sendCommit(id);
+      }
+    });
+
+    fader.addEventListener("pointercancel", () => {
+      isDragging[id] = false;
+      sendCommit(id);
+    });
 
     fader.addEventListener("input", e => {
       const val = Math.round(e.target.value);
@@ -123,15 +200,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
     mute.onclick = () => {
       sendUpdate(id, { mute: !mixerState[id].mute });
+      sendCommit(id);
     };
 
     solo.onclick = () => {
       sendUpdate(id, { solo: !mixerState[id].solo });
+      sendCommit(id);
     };
   }
 
   // ======================
-  // Enviar update
+  // WS helpers
   // ======================
   function sendUpdate(channel, payload) {
     ws.send(JSON.stringify({
@@ -141,8 +220,15 @@ document.addEventListener("DOMContentLoaded", () => {
     }));
   }
 
+  function sendCommit(channel) {
+    ws.send(JSON.stringify({
+      type: "COMMIT",
+      channel
+    }));
+  }
+
   // ======================
-  // Atualizar UI
+  // UI Update
   // ======================
   function updateChannelUI(ch) {
     if (!ch || ch.id === undefined) return;
@@ -165,9 +251,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  // ======================
-  // Lógica Solo / Mute
-  // ======================
   function isSoloActive() {
     return mixerState.some(c => c.solo);
   }
@@ -185,7 +268,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // ======================
-  // Animação Suave
+  // Animação
   // ======================
   function animateFader(fader, label, target) {
     let current = Number(fader.value);
