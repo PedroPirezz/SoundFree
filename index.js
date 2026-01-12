@@ -86,7 +86,8 @@ app.get("/", (req, res) => res.render("Home"));
 // LOGIN
 // ==============================
 app.post("/login", (req, res) => {
-  const { user, pass } = req.body;
+  const user = String(req.body.user || "").trim();
+  const pass = String(req.body.pass || "").trim();
 
   if (
     user === process.env.ADMIN_USER &&
@@ -101,6 +102,7 @@ app.post("/login", (req, res) => {
 
   res.status(401).json({ error: "Credenciais inválidas" });
 });
+
 
 // ==============================
 // WebSocket
