@@ -8,8 +8,9 @@ const app = express();
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
-const CHANNELS = 16;
+app.use(express.json()); 
 
+const CHANNELS = 16;
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -35,14 +36,12 @@ async function redisSet(key, value) {
   });
 }
 
-
 let mixerState = Array.from({ length: CHANNELS }, (_, i) => ({
   id: i,
   volume: 50,
   mute: false,
   solo: false
 }));
-
 
 async function loadMixerState() {
   try {
@@ -63,7 +62,6 @@ async function loadMixerState() {
   }
 }
 
-
 async function saveMixerState() {
   try {
     await redisSet("mixerState", JSON.stringify(mixerState));
@@ -73,10 +71,29 @@ async function saveMixerState() {
 }
 
 
-app.set("views", path.join(__dirname, "views"));
-app.set("view engine", "ejs");
-app.use(express.static(path.join(__dirname, "public")));
 
+
+
+app.post("/login", (req, res) => {
+  const { user, pass } = req.body;
+
+
+
+  const USER_OK = process.env.LOGIN_USER || "PedroPires";
+  const PASS_OK = process.env.LOGIN_PASS || "8918";
+
+  if (user === USER_OK && pass === PASS_OK) {
+    return res.json({
+      success: true,
+      token: "TOKEN_FAKE_123456"
+    });
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: "Credenciais inválidas"
+  });
+});
 
 
 
@@ -100,7 +117,6 @@ wss.on("connection", ws => {
     const ch = data.channel;
     if (!mixerState[ch]) return;
 
-  
     if (data.type === "UPDATE") {
       mixerState[ch] = {
         ...mixerState[ch],
@@ -118,7 +134,6 @@ wss.on("connection", ws => {
       });
     }
 
-    
     if (data.type === "COMMIT") {
       await saveMixerState();
       console.log("💾 Mixer salvo no Redis");
