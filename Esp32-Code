@@ -1,0 +1,192 @@
+#include <WiFi.h>
+#include <WebSocketsClient.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
+#include <Adafruit_PWMServoDriver.h>
+
+
+const char* ssid = "iPhone de Pedro_Pires";
+const char* password = "12348765";
+
+
+struct WifiCred {
+  const char* ssid;
+  const char* password;
+};
+
+WifiCred wifiList[] = {
+  {"Rap10-Tiao", "91402018"},
+  {"HEXA-FIBRA-6D28-2G", "87867071"},
+  {"iPhone de Pedro_Pires", "12348765"}
+  
+};
+
+const int WIFI_COUNT = sizeof(wifiList) / sizeof(wifiList[0]);
+
+WebSocketsClient webSocket;
+
+
+Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver(0x40);
+#define SERVO_MIN  120
+#define SERVO_MAX  530
+
+
+const int CHANNELS = 16;
+struct ChannelState {
+  int volume;
+  bool mute;
+  bool solo;
+};
+ChannelState mixerState[CHANNELS];
+
+
+const int interval = 30; // ms
+unsigned long lastUpdate = 0;
+
+
+int volumeToPulse(int vol) {
+  return map(vol, 0, 100, SERVO_MIN, SERVO_MAX);
+}
+
+
+bool connectToWiFiList() {
+  WiFi.mode(WIFI_STA);
+
+  for (int i = 0; i < WIFI_COUNT; i++) {
+    Serial.print("🔎 Tentando WiFi: ");
+    Serial.println(wifiList[i].ssid);
+
+    WiFi.begin(wifiList[i].ssid, wifiList[i].password);
+
+    unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 8000) {
+      delay(500);
+      Serial.print(".");
+    }
+
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.println();
+      Serial.print("✅ Conectado em ");
+      Serial.println(wifiList[i].ssid);
+      Serial.print("IP: ");
+      Serial.println(WiFi.localIP());
+      return true;
+    }
+
+    Serial.println();
+    Serial.println("❌ Falhou, tentando próxima rede...");
+    WiFi.disconnect(true);
+    delay(1000);
+  }
+
+  return false;
+}
+
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      Serial.println("❌ WebSocket desconectado");
+      break;
+
+    case WStype_CONNECTED:
+      Serial.println("✅ WebSocket conectado ao servidor");
+      break;
+
+    case WStype_TEXT: {
+      String msg = String((char*)payload);
+
+      DynamicJsonDocument doc(2048);
+      DeserializationError err = deserializeJson(doc, msg);
+      if (!err) {
+        if (doc["type"] == "SYNC") {
+          int ch = doc["channel"];
+          JsonObject p = doc["payload"];
+
+          if (p.containsKey("volume")) mixerState[ch].volume = p["volume"];
+          if (p.containsKey("mute")) mixerState[ch].mute = p["mute"];
+          if (p.containsKey("solo")) mixerState[ch].solo = p["solo"];
+
+          Serial.print("🎚 Canal "); Serial.print(ch); Serial.println(" atualizado:");
+          for (JsonPair kv : p) {
+            Serial.print("   ");
+            Serial.print(kv.key().c_str());
+            Serial.print(" = ");
+            Serial.println(kv.value().as<String>());
+          }
+        }
+        else if (doc["type"] == "INIT") {
+          JsonArray arr = doc["state"];
+          for (int i=0; i<CHANNELS && i < arr.size(); i++) {
+            mixerState[i].volume = arr[i]["volume"];
+            mixerState[i].mute   = arr[i]["mute"];
+            mixerState[i].solo   = arr[i]["solo"];
+          }
+          Serial.println("♻️ Mixer inicializado pelo servidor");
+        }
+      }
+      break;
+    }
+
+    case WStype_ERROR:
+      Serial.println("⚠️ Erro WebSocket");
+      break;
+
+    default:
+      break;
+  }
+}
+
+
+void setup() {
+  Serial.begin(115200);
+  delay(1000);
+
+  Serial.println("🔌 Conectando WiFi...");
+
+  // 🔥 Usa a lista de WiFi
+  if (!connectToWiFiList()) {
+    Serial.println("🚫 Nenhuma rede WiFi disponível. Reiniciando...");
+    delay(5000);
+    ESP.restart();
+  }
+
+  // Inicializa PCA9685
+  Wire.begin(21, 22);
+  pca.begin();
+  pca.setPWMFreq(50);
+
+  // Inicializa WebSocket seguro
+  webSocket.beginSSL("soundfree-1.onrender.com", 443, "/");
+  webSocket.onEvent(webSocketEvent);
+  webSocket.setReconnectInterval(3000);
+
+  // Inicializa mixerState padrão
+  for(int i=0;i<CHANNELS;i++){
+    mixerState[i].volume = 50;
+    mixerState[i].mute   = false;
+    mixerState[i].solo   = false;
+  }
+
+  Serial.println("🔌 Pronto para receber atualizações do servidor");
+}
+
+void loop() {
+  webSocket.loop();
+
+  if (millis() - lastUpdate > interval) {
+    lastUpdate = millis();
+
+    bool soloActive = false;
+    for(int i=0;i<CHANNELS;i++) if (mixerState[i].solo) soloActive = true;
+
+    for(int i=0;i<CHANNELS;i++){
+      int targetVol = mixerState[i].volume;
+
+      if (mixerState[i].mute) targetVol = 0;
+      else if (soloActive && !mixerState[i].solo) targetVol = 0;
+
+      int pulso = volumeToPulse(targetVol);
+      pca.setPWM(i, 0, pulso);
+    }
+  }
+}
